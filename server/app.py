@@ -1,58 +1,76 @@
-from flask import Flask, jsonify, request, abort
-from flask_sqlalchemy import SQLAlchemy
-from models import Plant, db
+#!/usr/bin/env python3
+
+from flask import Flask, jsonify, request, make_response
+from flask_migrate import Migrate
+from flask_restful import Api, Resource
+
+from models import db, Plant
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///plants.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.json.compact = False
 
+migrate = Migrate(app, db)
 db.init_app(app)
 
-@app.route('/plants/<int:id>', methods=['GET'])
-def get_plant_by_id(id):
-    plant = Plant.query.get(id)
-    if plant:
-        return jsonify({
-            'id': plant.id,
-            'name': plant.name,
-            'image': plant.image,
-            'price': plant.price,
-            'is_in_stock': plant.is_in_stock
-        }), 200
-    else:
-        abort(404, description="Plant not found")
+api = Api(app)
 
-@app.route('/plants/<int:id>', methods=['PATCH'])
-def update_plant(id):
-    plant = Plant.query.get(id)
-    if not plant:
-        abort(404, description="Plant not found")
-    
-    data = request.get_json()
-    if "is_in_stock" in data:
-        plant.is_in_stock = data["is_in_stock"]
+
+class Plants(Resource):
+
+    def get(self):
+        plants = [plant.to_dict() for plant in Plant.query.all()]
+        return make_response(jsonify(plants), 200)
+
+    def post(self):
+
+        data = request.get_json()
+
+        new_plant = Plant(
+            name=data['name'],
+            image=data['image'],
+            price=data['price'],
+        )
+
+        db.session.add(new_plant)
         db.session.commit()
-        return jsonify({
-            'id': plant.id,
-            'name': plant.name,
-            'image': plant.image,
-            'price': plant.price,
-            'is_in_stock': plant.is_in_stock
-        }), 200
 
-    return jsonify({"error": "Invalid input"}), 400
+        return make_response(new_plant.to_dict(), 201)
 
 
-@app.route('/plants/<int:id>', methods=['DELETE'])
-def delete_plant(id):
-    plant = Plant.query.get(id)
-    if not plant:
-        abort(404, description="Plant not found")
-    
-    db.session.delete(plant)
-    db.session.commit()
-    
-    return '', 204
+api.add_resource(Plants, '/plants')
+
+
+class PlantByID(Resource):
+
+    def get(self, id):
+        plant = Plant.query.filter_by(id=id).first().to_dict()
+        return make_response(jsonify(plant), 200)
+
+    def patch(self, id):
+
+        data = request.get_json()
+
+        plant = Plant.query.filter_by(id=id).first()
+
+        for attr in data:
+            setattr(plant, attr, data[attr])
+
+        db.session.add(plant)
+        db.session.commit()
+
+        return make_response(plant.to_dict(), 200)
+
+    def delete(self, id):
+        plant = Plant.query.filter_by(id=id).first()
+        db.session.delete
+        db.session.commit()
+
+        return make_response('deleted plant successfully', 204)
+
+api.add_resource(PlantByID, '/plants/<int:id>')
+
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(port=5555, debug=True)
